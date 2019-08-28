@@ -107,7 +107,6 @@ impl Context {
     self.context.borrow_mut().subscribe(
       mask,
       clone!(events => move |success| {
-        println!("Subscribe success: {}", success);
         if !success {
           events.borrow_mut().error = true;
         }

@@ -1,8 +1,8 @@
-use dbus_futures::context::{flags, Context, Proplist};
 use futures::executor::block_on;
 use futures_util::stream::StreamExt;
 use libpulse_binding as pulse;
 use libpulse_binding::def::PortAvailable;
+use libpulse_futures::context::{flags, Context, Proplist};
 use pulse::context::subscribe::subscription_masks;
 
 async fn print_sinks_and_volume(context: &Context) {
@@ -37,11 +37,11 @@ async fn example() {
   proplist
     .set_str(
       pulse::proplist::properties::APPLICATION_NAME,
-      "dbus-futures example",
+      "libpulse-futures example",
     )
     .unwrap();
 
-  let mut context = Context::new_with_proplist("dbus-futures example context", &proplist);
+  let mut context = Context::new_with_proplist("libpulse-futures example context", &proplist);
 
   context
     .connect(None, flags::NOFLAGS, None)

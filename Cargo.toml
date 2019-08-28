@@ -1,5 +1,5 @@
 [package]
-name = "dbus-futures"
+name = "libpulse-futures"
 version = "0.1.0"
 authors = ["Rasmus Eneman <rasmus@eneman.eu>"]
 edition = "2018"

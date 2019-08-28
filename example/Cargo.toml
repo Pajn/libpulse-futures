@@ -9,4 +9,5 @@ edition = "2018"
 [dependencies]
 dbus-futures = { path = ".." }
 futures-preview = "=0.3.0-alpha.18"
+futures-util-preview = "=0.3.0-alpha.18"
 libpulse-binding = "2.11.1"

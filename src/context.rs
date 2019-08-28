@@ -1,16 +1,21 @@
+use crate::clone;
 use crate::introspector::Introspector;
+use crate::operation::Value;
+use futures::stream::Stream;
 pub use libpulse_binding::context;
 use libpulse_binding::context::State;
 pub use libpulse_binding::def::SpawnApi;
 pub use libpulse_binding::error::PAErr;
 use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
 
+pub use libpulse_binding::context::subscribe::{Facility, InterestMaskSet, Operation};
 pub use libpulse_binding::context::{flags, FlagSet};
 pub use libpulse_binding::proplist::Proplist;
 
@@ -74,6 +79,47 @@ impl Context {
       introspector: self.context.borrow().introspect(),
     }
   }
+
+  /// Enables event notification.
+  ///
+  /// The mask parameter is used to specify which facilities you are
+  /// interested in being modified about.
+  ///
+  /// The tuple has three values. The first two are the facility and
+  /// operation components of the event type respectively (the
+  /// underlying C API provides this information combined into a single
+  /// integer, here we extract the two component parts for you); these
+  /// are wrapped in Option wrappers should the given values ever not
+  /// map to the enum variants, but it’s probably safe to always just
+  /// unwrap() them). The third parameter is an associated index value.
+  ///
+  /// Panics if the underlying C function returns a null pointer.
+  pub fn subscribe(&mut self, mask: InterestMaskSet) -> Subscription {
+    let events = Rc::new(RefCell::new(Value::new(Some(VecDeque::new()))));
+
+    let callback = Box::new(clone!(events => move |facility, operation, index| {
+      events.borrow_mut().value.as_mut().unwrap().push_back((facility, operation, index));
+    }));
+    self
+      .context
+      .borrow_mut()
+      .set_subscribe_callback(Some(callback));
+    self.context.borrow_mut().subscribe(
+      mask,
+      clone!(events => move |success| {
+        println!("Subscribe success: {}", success);
+        if !success {
+          events.borrow_mut().error = true;
+        }
+      }),
+    );
+
+    Subscription {
+      error_returned: false,
+      events,
+      mainloop: self.mainloop.clone(),
+    }
+  }
 }
 
 impl Drop for Context {
@@ -101,6 +147,43 @@ impl Future for ContextFuture {
     match self.context.borrow().get_state() {
       State::Ready => Poll::Ready(Ok(())),
       State::Failed | State::Terminated => Poll::Ready(Err(())),
+      _ => Poll::Pending,
+    }
+  }
+}
+
+pub struct Subscription {
+  error_returned: bool,
+  events: Rc<RefCell<Value<VecDeque<(Option<Facility>, Option<Operation>, u32)>>>>,
+  mainloop: Rc<RefCell<Mainloop>>,
+}
+
+impl Stream for Subscription {
+  type Item = Result<(Option<Facility>, Option<Operation>, u32), ()>;
+
+  fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context) -> Poll<Option<Self::Item>> {
+    cx.waker().wake_by_ref();
+
+    if self.error_returned {
+      return Poll::Ready(None);
+    }
+
+    let result = self.mainloop.borrow_mut().iterate(false);
+    match result {
+      IterateResult::Quit(_) | IterateResult::Err(_) => {
+        self.error_returned = true;
+        return Poll::Ready(Some(Err(())));
+      }
+      IterateResult::Success(_) => {}
+    }
+
+    if self.events.borrow().error {
+      self.error_returned = true;
+      return Poll::Ready(Some(Err(())));
+    }
+
+    match self.events.borrow_mut().value.as_mut().unwrap().pop_front() {
+      Some(event) => Poll::Ready(Some(Ok(event))),
       _ => Poll::Pending,
     }
   }

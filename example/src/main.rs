@@ -1,6 +1,36 @@
 use dbus_futures::context::{flags, Context, Proplist};
 use futures::executor::block_on;
+use futures_util::stream::StreamExt;
 use libpulse_binding as pulse;
+use libpulse_binding::def::PortAvailable;
+use pulse::context::subscribe::subscription_masks;
+
+async fn print_sinks_and_volume(context: &Context) {
+  let introspect = context.introspect();
+
+  let sinks = introspect.get_sink_info_list().await.unwrap();
+
+  for sink in sinks {
+    for port in sink.ports {
+      if port.available == PortAvailable::Yes {
+        println!(
+          "{} - {}: {}%",
+          port
+            .description
+            .as_ref()
+            .or(port.name.as_ref())
+            .unwrap_or(&"???".to_string()),
+          sink
+            .description
+            .as_ref()
+            .or(sink.name.as_ref())
+            .unwrap_or(&"???".to_string()),
+          (sink.volume.avg().0 as f32 / sink.n_volume_steps as f32 * 100.0) as u8
+        );
+      }
+    }
+  }
+}
 
 async fn example() {
   let mut proplist = Proplist::new().unwrap();
@@ -18,26 +48,16 @@ async fn example() {
     .await
     .expect("Failed to connect context");
 
-  let introspect = context.introspect();
+  print_sinks_and_volume(&context).await;
 
-  let sinks = introspect.get_sink_info_list().await.unwrap();
+  let interest = subscription_masks::SINK;
 
-  for sink in sinks {
-    for port in sink.ports {
-      println!(
-        "{} - {}",
-        port
-          .description
-          .as_ref()
-          .or(port.name.as_ref())
-          .unwrap_or(&"???".to_string()),
-        sink
-          .description
-          .as_ref()
-          .or(sink.name.as_ref())
-          .unwrap_or(&"???".to_string()),
-      );
-    }
+  let mut subscription = context.subscribe(interest);
+  while let Some(_) = subscription.next().await {
+    println!("");
+    println!("Update:");
+
+    print_sinks_and_volume(&context).await;
   }
 }
 

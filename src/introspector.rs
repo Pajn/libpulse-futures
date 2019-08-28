@@ -207,11 +207,7 @@ impl Introspector {
   /// Sets the mute switch of a sink device specified by its index.
   ///
   /// Panics on error, i.e. invalid arguments or state.
-  pub fn set_sink_mute_by_index(
-    &mut self,
-    index: u32,
-    mute: bool,
-  ) -> OperationFuture<()> {
+  pub fn set_sink_mute_by_index(&mut self, index: u32, mute: bool) -> OperationFuture<()> {
     let result = Rc::new(RefCell::new(Value::new(Some(()))));
 
     let op = Rc::new(self.introspector.set_sink_mute_by_index(
@@ -232,11 +228,7 @@ impl Introspector {
   /// Sets the mute switch of a sink device specified by its name.
   ///
   /// Panics on error, i.e. invalid arguments or state.
-  pub fn set_sink_mute_by_name(
-    &mut self,
-    name: &str,
-    mute: bool,
-  ) -> OperationFuture<()> {
+  pub fn set_sink_mute_by_name(&mut self, name: &str, mute: bool) -> OperationFuture<()> {
     let result = Rc::new(RefCell::new(Value::new(Some(()))));
 
     let op = Rc::new(self.introspector.set_sink_mute_by_name(
@@ -257,11 +249,7 @@ impl Introspector {
   /// Changes the profile of a sink.
   ///
   /// Panics on error, i.e. invalid arguments or state.
-  pub fn set_sink_port_by_index(
-    &mut self,
-    index: u32,
-    port: &str,
-  ) -> OperationFuture<()> {
+  pub fn set_sink_port_by_index(&mut self, index: u32, port: &str) -> OperationFuture<()> {
     let result = Rc::new(RefCell::new(Value::new(Some(()))));
 
     let op = Rc::new(self.introspector.set_sink_port_by_index(
@@ -282,11 +270,7 @@ impl Introspector {
   /// Changes the profile of a sink.
   ///
   /// Panics on error, i.e. invalid arguments or state.
-  pub fn set_sink_port_by_name(
-    &mut self,
-    name: &str,
-    port: &str,
-  ) -> OperationFuture<()> {
+  pub fn set_sink_port_by_name(&mut self, name: &str, port: &str) -> OperationFuture<()> {
     let result = Rc::new(RefCell::new(Value::new(Some(()))));
 
     let op = Rc::new(self.introspector.set_sink_port_by_name(

@@ -3,7 +3,6 @@ use crate::operation::{OperationFuture, Value};
 use libpulse_binding::callbacks::ListResult;
 use libpulse_binding::context::introspect;
 use libpulse_binding::def::PortAvailable;
-use libpulse_binding::mainloop::standard::Mainloop;
 use libpulse_binding::proplist::Proplist;
 use libpulse_binding::time::MicroSeconds;
 use libpulse_binding::volume::{ChannelVolumes, Volume};
@@ -121,8 +120,44 @@ impl<'a> From<&'a introspect::SinkInfo<'a>> for SinkInfo {
   }
 }
 
+pub struct ServerInfo {
+  /// User name of the daemon process.
+  pub user_name: Option<String>,
+  /// Host name the daemon is running on.
+  pub host_name: Option<String>,
+  /// Version string of the daemon.
+  pub server_version: Option<String>,
+  /// Server package name (usually “pulseaudio”).
+  pub server_name: Option<String>,
+  /// Default sample specification.
+  pub sample_spec: sample::Spec,
+  /// Name of default sink.
+  pub default_sink_name: Option<String>,
+  /// Name of default source.
+  pub default_source_name: Option<String>,
+  /// A random cookie for identifying this instance of PulseAudio.
+  pub cookie: u32,
+  /// Default channel map.
+  pub channel_map: channelmap::Map,
+}
+
+impl<'a> From<&'a introspect::ServerInfo<'a>> for ServerInfo {
+  fn from(info: &'a introspect::ServerInfo<'a>) -> Self {
+    ServerInfo {
+      user_name: info.user_name.as_ref().map(|cow| cow.to_string()),
+      host_name: info.host_name.as_ref().map(|cow| cow.to_string()),
+      server_version: info.server_version.as_ref().map(|cow| cow.to_string()),
+      server_name: info.server_name.as_ref().map(|cow| cow.to_string()),
+      sample_spec: info.sample_spec,
+      default_sink_name: info.default_sink_name.as_ref().map(|cow| cow.to_string()),
+      default_source_name: info.default_source_name.as_ref().map(|cow| cow.to_string()),
+      cookie: info.cookie,
+      channel_map: info.channel_map,
+    }
+  }
+}
+
 pub struct Introspector {
-  pub(crate) mainloop: Rc<RefCell<Mainloop>>,
   pub(crate) introspector: introspect::Introspector,
 }
 
@@ -149,7 +184,48 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
+      operation: op,
+    }
+  }
+  pub fn get_sink_info_by_name(&self, name: &str) -> OperationFuture<Option<SinkInfo>> {
+    let result = Rc::new(RefCell::new(Value::new(Some(None))));
+
+    let op = Rc::new(self.introspector.get_sink_info_by_name(name,
+      clone!(result => move |list| match list {
+        ListResult::Item(item) => {
+          result
+            .borrow_mut()
+            .value
+            .as_mut()
+            .unwrap()
+            .replace(item.into());
+        }
+        ListResult::Error => {
+          result.borrow_mut().error = true;
+        }
+        ListResult::End => {}
+      }),
+    ));
+
+    OperationFuture {
+      result: result,
+      operation: op,
+    }
+  }
+
+  pub fn get_server_info(&self) -> OperationFuture<ServerInfo> {
+    let result = Rc::new(RefCell::new(Value::new(None)));
+
+    let op = Rc::new(self.introspector.get_server_info(
+      clone!(result => move |info| {
+        result
+          .borrow_mut()
+          .value = Some(info.into());
+      })
+    ));
+
+    OperationFuture {
+      result: result,
       operation: op,
     }
   }
@@ -174,7 +250,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }
@@ -199,7 +274,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }
@@ -220,7 +294,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }
@@ -241,7 +314,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }
@@ -262,7 +334,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }
@@ -283,7 +354,6 @@ impl Introspector {
 
     OperationFuture {
       result: result,
-      mainloop: self.mainloop.clone(),
       operation: op,
     }
   }

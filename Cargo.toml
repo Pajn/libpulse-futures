@@ -8,4 +8,9 @@ edition = "2018"
 
 [dependencies]
 futures-preview = "=0.3.0-alpha.18"
-libpulse-binding = "2.11.1"
+libpulse-binding = { path = "../pulse-binding-rust/pulse-binding" }
+libpulse-glib-binding = { path = "../pulse-binding-rust/pulse-binding-mainloop-glib" }
+
+[dependencies.glib]
+version = "0.8.1"
+features = ["futures"]

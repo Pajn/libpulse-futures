@@ -1,9 +1,10 @@
-use futures::executor::block_on;
 use futures_util::stream::StreamExt;
 use libpulse_binding as pulse;
 use libpulse_binding::def::PortAvailable;
 use libpulse_futures::context::{flags, Context, Proplist};
 use pulse::context::subscribe::subscription_masks;
+use glib::MainContext;
+use glib::MainLoop;
 
 async fn print_sinks_and_volume(context: &Context) {
   let introspect = context.introspect();
@@ -32,7 +33,7 @@ async fn print_sinks_and_volume(context: &Context) {
   }
 }
 
-async fn example() {
+async fn example(mut c: MainContext) {
   let mut proplist = Proplist::new().unwrap();
   proplist
     .set_str(
@@ -41,7 +42,7 @@ async fn example() {
     )
     .unwrap();
 
-  let mut context = Context::new_with_proplist("libpulse-futures example context", &proplist);
+  let mut context = Context::new_with_maincontext_and_proplist(&mut c, "libpulse-futures example context", &proplist);
 
   context
     .connect(None, flags::NOFLAGS, None)
@@ -62,5 +63,10 @@ async fn example() {
 }
 
 fn main() {
-  block_on(example());
+  let c = MainContext::default();
+  c.push_thread_default();
+  let l = MainLoop::new(Some(&c), false);
+  c.spawn_local(example(c.clone()));
+  l.run();
+  c.pop_thread_default();
 }

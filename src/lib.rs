@@ -1,6 +1,6 @@
 pub mod context;
 pub mod introspector;
-mod operation;
+pub mod operation;
 mod util;
 
 mod tests {

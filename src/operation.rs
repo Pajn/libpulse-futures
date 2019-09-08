@@ -1,10 +1,10 @@
-use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
 use libpulse_binding::operation::{Operation, State};
 use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
+use glib::{MainContext, PRIORITY_DEFAULT_IDLE};
 
 pub(crate) trait OperationExt {
   fn get_state(&self) -> State;
@@ -32,7 +32,6 @@ impl<T> Value<T> {
 
 pub struct OperationFuture<T> {
   pub(crate) result: Rc<RefCell<Value<T>>>,
-  pub(crate) mainloop: Rc<RefCell<Mainloop>>,
   pub(crate) operation: Rc<dyn OperationExt>,
 }
 
@@ -40,12 +39,11 @@ impl<T> Future for OperationFuture<T> {
   type Output = Result<T, ()>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-    cx.waker().wake_by_ref();
-
-    match self.mainloop.borrow_mut().iterate(false) {
-      IterateResult::Quit(_) | IterateResult::Err(_) => return Poll::Ready(Err(())),
-      IterateResult::Success(_) => {}
-    }
+    let c = MainContext::default();
+    let waker = cx.waker().clone();
+    c.invoke_local_with_priority(PRIORITY_DEFAULT_IDLE, move || {
+      waker.wake_by_ref();
+    });
 
     match self.operation.get_state() {
       State::Running => Poll::Pending,

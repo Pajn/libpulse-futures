@@ -6,7 +6,7 @@ pub use libpulse_binding::context;
 use libpulse_binding::context::State;
 pub use libpulse_binding::def::SpawnApi;
 pub use libpulse_binding::error::PAErr;
-use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
+use libpulse_glib_binding::Mainloop;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::future::Future;
@@ -14,13 +14,15 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
+use glib::{MainContext, PRIORITY_DEFAULT_IDLE};
+use std::time::Duration;
+use std::thread;
 
 pub use libpulse_binding::context::subscribe::{Facility, InterestMaskSet, Operation};
 pub use libpulse_binding::context::{flags, FlagSet};
 pub use libpulse_binding::proplist::Proplist;
 
 pub struct Context {
-  mainloop: Rc<RefCell<Mainloop>>,
   context: Rc<RefCell<context::Context>>,
 }
 
@@ -30,7 +32,7 @@ impl Context {
   /// client property list.
   pub fn new_with_proplist(name: &str, proplist: &Proplist) -> Context {
     let mainloop = Rc::new(RefCell::new(
-      Mainloop::new().expect("Failed to create mainloop"),
+      Mainloop::new(None).expect("Failed to create mainloop"),
     ));
 
     let context = Rc::new(RefCell::new(
@@ -38,7 +40,23 @@ impl Context {
         .expect("Failed to create new context"),
     ));
 
-    Context { mainloop, context }
+    Context { context }
+  }
+
+  /// Instantiates a new connection context with an abstract
+  /// mainloop API and an application name, and specify the initial
+  /// client property list.
+  pub fn new_with_maincontext_and_proplist(c: &mut MainContext, name: &str, proplist: &Proplist) -> Context {
+    let mainloop = Rc::new(RefCell::new(
+      Mainloop::new(Some(c)).expect("Failed to create mainloop"),
+    ));
+
+    let context = Rc::new(RefCell::new(
+      context::Context::new_with_proplist(mainloop.borrow().deref(), name, proplist)
+        .expect("Failed to create new context"),
+    ));
+
+    Context { context }
   }
 
   /// Connects the context to the specified server.
@@ -61,7 +79,6 @@ impl Context {
       .expect("Failed to connect context");
 
     ContextFuture {
-      mainloop: self.mainloop.clone(),
       context: self.context.clone(),
     }
   }
@@ -75,7 +92,6 @@ impl Context {
   /// giving access to introspection routines.
   pub fn introspect(&self) -> Introspector {
     Introspector {
-      mainloop: self.mainloop.clone(),
       introspector: self.context.borrow().introspect(),
     }
   }
@@ -116,7 +132,6 @@ impl Context {
     Subscription {
       error_returned: false,
       events,
-      mainloop: self.mainloop.clone(),
     }
   }
 }
@@ -128,7 +143,6 @@ impl Drop for Context {
 }
 
 pub struct ContextFuture {
-  mainloop: Rc<RefCell<Mainloop>>,
   context: Rc<RefCell<context::Context>>,
 }
 
@@ -136,12 +150,11 @@ impl Future for ContextFuture {
   type Output = Result<(), ()>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-    cx.waker().wake_by_ref();
-
-    match self.mainloop.borrow_mut().iterate(false) {
-      IterateResult::Quit(_) | IterateResult::Err(_) => return Poll::Ready(Err(())),
-      IterateResult::Success(_) => {}
-    }
+    let c = MainContext::default();
+    let waker = cx.waker().clone();
+    c.invoke_local_with_priority(PRIORITY_DEFAULT_IDLE, move || {
+      waker.wake_by_ref();
+    });
 
     match self.context.borrow().get_state() {
       State::Ready => Poll::Ready(Ok(())),
@@ -154,26 +167,21 @@ impl Future for ContextFuture {
 pub struct Subscription {
   error_returned: bool,
   events: Rc<RefCell<Value<VecDeque<(Option<Facility>, Option<Operation>, u32)>>>>,
-  mainloop: Rc<RefCell<Mainloop>>,
 }
 
 impl Stream for Subscription {
   type Item = Result<(Option<Facility>, Option<Operation>, u32), ()>;
 
   fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context) -> Poll<Option<Self::Item>> {
-    cx.waker().wake_by_ref();
+    let c = MainContext::default();
+    let waker = cx.waker().clone();
+    c.invoke_local_with_priority(PRIORITY_DEFAULT_IDLE, move || {
+      thread::sleep(Duration::from_millis(2));
+      waker.wake_by_ref();
+    });
 
     if self.error_returned {
       return Poll::Ready(None);
-    }
-
-    let result = self.mainloop.borrow_mut().iterate(false);
-    match result {
-      IterateResult::Quit(_) | IterateResult::Err(_) => {
-        self.error_returned = true;
-        return Poll::Ready(Some(Err(())));
-      }
-      IterateResult::Success(_) => {}
     }
 
     if self.events.borrow().error {
